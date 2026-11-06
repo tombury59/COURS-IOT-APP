@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 // qui utilise le WebSocket global (fourni par React Native) et n'a PAS besoin
 // des modules Node (stream, buffer...) que la v5 exigerait.
 import mqtt from 'mqtt/dist/mqtt';
+import TemperatureChart from './components/TemperatureChart';
 
 // --- Configuration (lue depuis le .env via les variables EXPO_PUBLIC_) ---
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
@@ -48,6 +49,7 @@ export default function App() {
   const [hum, setHum] = useState(null);
   const [lastSeen, setLastSeen] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [history, setHistory] = useState([]); // derniers points pour la courbe
 
   // Etat derive du "moteur d'alerte".
   const [tempAlertActive, setTempAlertActive] = useState(false); // alerte hors plage CONFIRMEE
@@ -111,7 +113,11 @@ export default function App() {
       if (topic === TOPIC_TEMPERATURE) {
         try {
           const data = JSON.parse(text);
-          if (typeof data.temp === 'number') setTemp(data.temp);
+          if (typeof data.temp === 'number') {
+            setTemp(data.temp);
+            // On garde un historique glissant (60 derniers points) pour la courbe.
+            setHistory((prev) => [...prev, { value: data.temp, at: new Date() }].slice(-60));
+          }
           if (typeof data.hum === 'number') setHum(data.hum);
           setLastSeen(new Date());
         } catch (e) {
@@ -203,7 +209,7 @@ export default function App() {
       </View>
 
       {view === 'dashboard' ? (
-        <View style={styles.flex1}>
+        <ScrollView style={styles.flex1} contentContainerStyle={styles.dashboardContent}>
           <Text style={styles.title}>Frigo Pharmacie</Text>
           <Text style={styles.subtitle}>Chaine du froid ({TEMP_MIN}-{TEMP_MAX} C)</Text>
 
@@ -216,6 +222,9 @@ export default function App() {
               Derniere mesure : {lastSeen ? lastSeen.toLocaleTimeString() : 'aucune pour l instant'}
             </Text>
           </View>
+
+          {/* Courbe de temperature en direct (bande 2-8 C en fond) */}
+          <TemperatureChart points={history} min={TEMP_MIN} max={TEMP_MAX} />
 
           {/* Bannieres de notification */}
           {alertActive && (
@@ -255,7 +264,7 @@ export default function App() {
           <Text style={styles.topicInfo}>Topic : {TOPIC_WILDCARD}</Text>
 
           {errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
-        </View>
+        </ScrollView>
       ) : (
         <AlertsView alerts={alerts} />
       )}
@@ -300,6 +309,7 @@ const styles = StyleSheet.create({
   containerAlert: { backgroundColor: '#c0392b' },
   containerWatch: { backgroundColor: '#b9770e' },
   flex1: { flex: 1 },
+  dashboardContent: { paddingBottom: 24 },
   tabs: { flexDirection: 'row', marginBottom: 16, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 10, padding: 4 },
   tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   tabActive: { backgroundColor: '#ffffff' },
